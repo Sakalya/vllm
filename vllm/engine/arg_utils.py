@@ -214,6 +214,8 @@ class EngineArgs:
     calculate_kv_scales: Optional[bool] = None
 
     additional_config: Optional[Dict[str, Any]] = None
+    enable_reasoning: Optional[bool] = None
+    reasoning_parser: Optional[str] = None
 
     def __post_init__(self):
         if not self.tokenizer:
@@ -1061,6 +1063,25 @@ class EngineArgs:
             "configs are valid for the platform you are using. The input format"
             " is like '{\"config_key\":\"config_value\"}'")
 
+        parser.add_argument(
+            "--enable-reasoning",
+            action="store_true",
+            default=False,
+            help="Whether to enable reasoning_content for the model. "
+            "If enabled, the model will be able to generate reasoning content."
+        )
+
+        parser.add_argument(
+            "--reasoning-parser",
+            type=str,
+            choices=["deepseek_r1"],
+            default=None,
+            help=
+            "Select the reasoning parser depending on the model that you're "
+            "using. This is used to parse the reasoning content into OpenAI "
+            "API format. Required for ``--enable-reasoning``.")
+
+
         parser.add_argument('--log-stats-interval',
                             type=float,
                             default=EngineArgs.log_stats_interval,
@@ -1338,7 +1359,10 @@ class EngineArgs:
                                         if self.enable_prompt_adapter else None
 
         decoding_config = DecodingConfig(
-            guided_decoding_backend=self.guided_decoding_backend)
+            guided_decoding_backend=self.guided_decoding_backend,
+            reasoning_backend=self.reasoning_parser
+            if self.enable_reasoning else None,
+        )
 
         show_hidden_metrics = False
         if self.show_hidden_metrics_for_version is not None:
