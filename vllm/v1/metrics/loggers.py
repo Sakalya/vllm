@@ -111,6 +111,9 @@ class PrometheusStatLogger(StatLoggerBase):
 
         max_model_len = vllm_config.model_config.max_model_len
 
+        #
+        # Scheduler state
+        #
         self.gauge_scheduler_running = prometheus_client.Gauge(
             name="vllm:num_requests_running",
             documentation="Number of requests in model execution batches.",
@@ -121,6 +124,9 @@ class PrometheusStatLogger(StatLoggerBase):
             documentation="Number of requests waiting to be processed.",
             labelnames=labelnames).labels(*labelvalues)
 
+        #
+        # GPU cache
+        #
         self.gauge_gpu_cache_usage = prometheus_client.Gauge(
             name="vllm:gpu_cache_usage_perc",
             documentation="GPU KV-cache usage. 1 means 100 percent usage.",
@@ -138,6 +144,9 @@ class PrometheusStatLogger(StatLoggerBase):
             "GPU prefix cache hits, in terms of number of cached blocks.",
             labelnames=labelnames).labels(*labelvalues)
 
+        #
+        # Counters
+        #
         self.counter_num_preempted_reqs = prometheus_client.Counter(
             name="vllm:num_preemptions_total",
             documentation="Cumulative number of preemption from the engine.",
@@ -164,6 +173,9 @@ class PrometheusStatLogger(StatLoggerBase):
                 reason] = counter_request_success_base.labels(*(labelvalues +
                                                                 [str(reason)]))
 
+        #
+        # Histograms of counts
+        #
         self.histogram_num_prompt_tokens_request = \
             prometheus_client.Histogram(
                 name="vllm:request_prompt_tokens",
@@ -185,6 +197,31 @@ class PrometheusStatLogger(StatLoggerBase):
                 buckets=build_cudagraph_buckets(vllm_config),
                 labelnames=labelnames).labels(*labelvalues)
 
+        self.histogram_max_num_generation_tokens_request = \
+            prometheus_client.Histogram(
+                name="vllm:request_max_num_generation_tokens",
+                documentation=
+                "Histogram of maximum number of requested generation tokens.",
+                buckets=build_1_2_5_buckets(max_model_len),
+                labelnames=labelnames).labels(*labelvalues)
+
+        self.histogram_n_request = \
+            prometheus_client.Histogram(
+                name="vllm:request_params_n",
+                documentation="Histogram of the n request parameter.",
+                buckets=[1, 2, 5, 10, 20],
+                labelnames=labelnames).labels(*labelvalues)
+
+        self.histogram_max_tokens_request = \
+            prometheus_client.Histogram(
+                name="vllm:request_params_max_tokens",
+                documentation="Histogram of the max_tokens request parameter.",
+                buckets=build_1_2_5_buckets(max_model_len),
+                labelnames=labelnames).labels(*labelvalues)
+
+        #
+        # Histogram of timing intervals
+        #
         self.histogram_time_to_first_token = \
             prometheus_client.Histogram(
                 name="vllm:time_to_first_token_seconds",
@@ -244,6 +281,9 @@ class PrometheusStatLogger(StatLoggerBase):
                 buckets=request_latency_buckets,
                 labelnames=labelnames).labels(*labelvalues)
 
+        #
+        # LoRA metrics
+        #
         self.gauge_lora_info: Optional[prometheus_client.Gauge] = None
         if vllm_config.lora_config is not None:
             self.labelname_max_lora = "max_lora"
@@ -260,6 +300,9 @@ class PrometheusStatLogger(StatLoggerBase):
                         self.labelname_running_lora_adapters,
                     ])
 
+        #
+        # Cache config info metric
+        #
         self.log_metrics_info("cache_config", vllm_config.cache_config)
 
     def log_metrics_info(self, type: str, config_obj: SupportsMetricsInfo):
@@ -301,6 +344,11 @@ class PrometheusStatLogger(StatLoggerBase):
             iteration_stats.num_prompt_tokens + \
             iteration_stats.num_generation_tokens)
 
+        for max_gen_tokens in iteration_stats.max_num_generation_tokens_iter:
+            self.histogram_max_num_generation_tokens_request.observe(
+                max_gen_tokens)
+        for n_param in iteration_stats.n_params_iter:
+            self.histogram_n_request.observe(n_param)
         for ttft in iteration_stats.time_to_first_tokens_iter:
             self.histogram_time_to_first_token.observe(ttft)
         for tpot in iteration_stats.time_per_output_tokens_iter:
@@ -322,6 +370,8 @@ class PrometheusStatLogger(StatLoggerBase):
                 finished_request.num_prompt_tokens)
             self.histogram_num_generation_tokens_request.observe(
                 finished_request.num_generation_tokens)
+            self.histogram_max_tokens_request.observe(
+                finished_request.max_tokens_param)
 
         if self.gauge_lora_info is not None:
             running_lora_adapters = \
