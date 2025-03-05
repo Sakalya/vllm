@@ -32,6 +32,9 @@ class LoggingStatLogger(StatLoggerBase):
     def __init__(self, vllm_config: VllmConfig):
         self._reset(time.monotonic())
         self.last_scheduler_stats = SchedulerStats()
+        # Prefix cache metrics. This cannot be reset.
+        # TODO: Make the interval configurable.
+        self.prefix_caching_metrics = PrefixCachingMetrics()
         self.vllm_config = vllm_config
 
     def _reset(self, now):
@@ -40,9 +43,6 @@ class LoggingStatLogger(StatLoggerBase):
         # Tracked stats over current local logging interval.
         self.num_prompt_tokens: list[int] = []
         self.num_generation_tokens: list[int] = []
-
-        # Prefix cache metrics. TODO: Make the interval configurable.
-        self.prefix_caching_metrics = PrefixCachingMetrics()
 
     def _local_interval_elapsed(self, now: float) -> bool:
         # Log every configured log_stats_interval level
